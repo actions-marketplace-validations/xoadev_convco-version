@@ -13,3 +13,31 @@ updates:
     groups:
       github-actions:
         patterns: ['*']
+
+  # The linters' lockfiles: markdownlint-cli2's pnpm-lock.yaml, which the npm ecosystem covers, and the uv-installed
+  # ones' uv.lock.
+  - package-ecosystem: npm
+    directory: /.github/etc
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      npm:
+        patterns: ['*']
+
+  - package-ecosystem: uv
+    directory: /.github/etc
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      uv:
+        patterns: ['*']

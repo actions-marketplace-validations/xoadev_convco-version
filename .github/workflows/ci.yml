@@ -15,106 +15,53 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  shellcheck:
-    name: ShellCheck
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Run shellcheck
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          severity: style
-          version: v0.11.0
 
-  shfmt:
-    name: shfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Installs the pnpm of .github/etc/package.json's packageManager.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          persist-credentials: false
-      - name: Install shfmt
-        run: go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
-      - name: Check formatting
-        # Options come from .editorconfig.
-        run: '"$(go env GOPATH)/bin/shfmt" --diff src .github/scripts'
+          package_json_file: .github/etc/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.13.1
+          enable-cache: false
+      # The Go that builds shfmt and actionlint below, and checks their modules against go.sum.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.2
+          cache: false
 
-  actionlint:
-    name: actionlint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Run actionlint
-        uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
+      # Dependencies included: go checks each module against go.sum, and uv and pnpm install the lockfiles in
+      # .github/etc, which Dependabot keeps up to date.
+      - name: Install the linters
+        run: |
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          uv sync --frozen --project .github/etc
+          echo "$PWD/.github/etc/.venv/bin" >> "$GITHUB_PATH"
+          pnpm install --dir .github/etc --frozen-lockfile
+          echo "$PWD/.github/etc/node_modules/.bin" >> "$GITHUB_PATH"
 
-  zizmor:
-    name: zizmor
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Run zizmor
-        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
-        with:
-          version: 1.30.1
-          config: .github/zizmor.yml
-          advanced-security: false
-          annotations: true
-
-  markdownlint:
-    name: markdownlint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
-        with:
-          globs: '**/*.md'
-          config: '.github/etc/.markdownlint.json'
-
-  yamllint:
-    name: yamllint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Run yamllint
-        uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
-        with:
-          config_file: .github/etc/.yamllint.yml
-          strict: true
-
-  editorconfig:
-    name: EditorConfig
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install editorconfig-checker
-        uses: editorconfig-checker/action-editorconfig-checker@51f63319f592f97930c73d9c46184d20bd206393 # v3.0.0
+      - uses: editorconfig-checker/action-editorconfig-checker@51f63319f592f97930c73d9c46184d20bd206393 # v3.0.0
         with:
           version: v4.0.2
-      - name: Run editorconfig-checker
-        run: editorconfig-checker
 
-  typos:
-    name: Spelling
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Run typos
-        uses: crate-ci/typos@7f9d0819ca1c008ade73f4b41fa9d258d48f605b # v1.51.1
+      - name: Run make lint
+        # --keep-going: one red linter does not hide what the others find.
+        run: make --keep-going lint
+        env:
+          # zizmor's online audits (impostor commits, known vulnerable actions) read the API with it.
+          GH_TOKEN: ${{ github.token }}
 
   commits:
     name: Conventional Commits
