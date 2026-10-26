@@ -13,6 +13,8 @@ Thanks for helping improve convco-version! This guide covers what you need to op
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Linters and commit checks |
 | [`.github/workflows/release-draft.yml`](.github/workflows/release-draft.yml) | Drafts the next release on every push to `main` |
 | [`.github/scripts/check-readme-version.sh`](.github/scripts/check-readme-version.sh) | Checks the README's examples use the version being released |
+| [`.github/scripts/test.sh`](.github/scripts/test.sh) | The integration tests' cases against the scripts, run by `make test` |
+| [`.github/etc/`](.github/etc) | The linters' configuration and lockfiles |
 
 ## Commits
 
@@ -29,13 +31,20 @@ breaking change (`feat!: drop convco 0.6`).
 ## Tests
 
 Every feature is covered by an integration test in [`test.yml`](.github/workflows/test.yml): each job builds a small
-git history, runs the action with `uses: ./` and checks its outputs. Add a job there for any behavior you add or
-change. There is no unit test suite on purpose: the integration tests are the source of truth.
+git history, runs the action with `uses: ./` and checks its outputs. `make test` runs the same cases locally with
+[`test.sh`](.github/scripts/test.sh), which runs the scripts in `src/` against throwaway git repositories (it needs
+`git`, `curl` and the network to download convco). Add a case to both for any behavior you add or change. There is no
+unit test suite on purpose: the integration tests are the source of truth.
 
 ## Linters
 
-CI runs these on every pull request; `make lint` runs the same checks locally with the tools on your `PATH`, at the
-versions pinned in [`ci.yml`](.github/workflows/ci.yml).
+`make lint` runs these, plus `make agents-check` on the shared head of [`AGENTS.md`](AGENTS.md), with the tools on
+your `PATH`. CI runs the same `make lint` on every pull request, after installing the versions pinned in
+[`ci.yml`](.github/workflows/ci.yml) and, with their dependencies, in the lockfiles of [`.github/etc`](.github/etc):
+`uv.lock` (with hashes) for ShellCheck, zizmor, yamllint and typos, through the uv pinned in `ci.yml`
+(`uv sync --frozen --project .github/etc`, which puts them in `.github/etc/.venv/bin`), and `pnpm-lock.yaml` for
+markdownlint, through the pnpm of `package.json`'s `packageManager` (`pnpm install --frozen-lockfile` in
+`.github/etc`).
 
 | Linter | Checks |
 | --- | --- |
@@ -51,8 +60,10 @@ versions pinned in [`ci.yml`](.github/workflows/ci.yml).
 ## Dependencies
 
 - Pin every dependency, action and tool to a full version (`actions/checkout@v7.0.1`, never `@v7` or `@latest`).
-- Actions are pinned by commit SHA with the version in a comment. [Dependabot](.github/dependabot.yml) keeps them up
-  to date, and [Renovate](renovate.json) keeps convco's default version up to date.
+- Actions are pinned by commit SHA with the version in a comment. [Dependabot](.github/dependabot.yml) keeps them and
+  the linters' lockfiles up to date, and [Renovate](renovate.json) keeps convco's default version up to date.
+- After changing a linter's version, regenerate its lockfile in `.github/etc`: `uv lock` for `pyproject.toml`,
+  `pnpm install --lockfile-only` for `package.json`.
 - A new convco version needs the sha256 of each of its assets in [`src/install.sh`](src/install.sh), as GitHub reports
   them for the release:
 
